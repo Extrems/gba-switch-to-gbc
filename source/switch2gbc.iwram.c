@@ -19,7 +19,15 @@
 	Email: antonio_nd@outlook.com
 */
 
-#include <gba.h>
+#include <gba_dma.h>
+#include <gba_input.h>
+#include <gba_interrupt.h>
+#include <gba_sound.h>
+#include <gba_timers.h>
+#include <gba_video.h>
+#include "bios.h"
+
+int keys;
 
 u16 GBC_DISPCNT_VALUE;
 
@@ -89,8 +97,6 @@ void switch2gbc(void)
 	
 	// Extra: Things that actually work!!! :D
 	
-	int keys = keysHeld();
-	
 	if(keys&KEY_B)
 	{
 		*((u16*)0x04000002) = 1; // GREENSWAP
@@ -148,37 +154,36 @@ void switch2gbc(void)
 	
 	//-----------------------------------------------------------------------------
 	
-	REG_IME = 1;
+	//REG_IME = 1;
 	
 	// DISPCNT = 0x0408 -> Video mode 0, GBC mode enabled, BG2 enabled
 	// GBC mode bit can only be modified from BIOS
 	GBC_DISPCNT_VALUE = 0x0408;
 	CpuSet(&GBC_DISPCNT_VALUE,(void*)0x04000000, 1); // copy 1 halfword, 16 bit mode
 	
-	VBlankIntrWait(); // It seems that the GBC mode begins when HALTCNT is written.
+	Halt(); // It seems that the GBC mode begins when HALTCNT is written.
 	
 	while(1); // Never reached in hardware. Trap emulators.
 }
 
 int main(void)
 {
-	irqInit();
-	irqDisable(0xFFFF);
-	irqEnable(IRQ_VBLANK);
+	keys = ~REG_KEYINPUT;
 	
-	while(1)
-	{
-		VBlankIntrWait();
-		scanKeys();
-		if(!(keysHeld()&KEY_A)) break;
-	}
+	REG_IE = IRQ_TIMER1;
+	REG_IF = REG_IF;
 	
-	while(1)
-	{
-		VBlankIntrWait();
-		scanKeys();
-		if(keysHeld()&KEY_A) break;
-	}
+	REG_TM1CNT_L = -(0x1000000 * 5) >> 16;
+	REG_TM1CNT_H = TIMER_START | TIMER_IRQ | TIMER_COUNT;
+	REG_TM0CNT_H = TIMER_START;
+	
+	Halt();
+	
+	REG_TM0CNT_L = REG_TM0CNT_H = 0;
+	REG_TM1CNT_L = REG_TM1CNT_H = 0;
+	
+	REG_IE = 0;
+	REG_IF = REG_IF;
 	
 	switch2gbc();
 	
